@@ -106,7 +106,13 @@ HARNESS_SHELL = _any(
 )
 HELP = re.compile(r"\s(?:--help|-h|--dry-run)\b")
 # 빈칸이 든 따옴표 문자열은 검색어나 메시지다. 하네스 명령 판정에서는 빼고 본다(예: rg "oraena init").
-QUOTED_PHRASE = re.compile(r"\"[^\"\n]*\s[^\"\n]*\"|'[^'\n]*\s[^'\n]*'")
+# 따옴표는 왼쪽부터 짝지어야 한다. 빈칸 있는 것만 고르는 정규식은 `"$T" && oraena init "$T"`에서
+# 앞 문자열의 닫는 따옴표와 뒤 문자열의 여는 따옴표를 짝지어 명령을 지웠다(2026-10-13).
+QUOTED = re.compile(r"\"[^\"\n]*\"|'[^'\n]*'")
+
+
+def _strip_phrases(cmd: str) -> str:
+    return QUOTED.sub(lambda m: " " if re.search(r"\s", m.group(0)[1:-1]) else m.group(0), cmd)
 DISABLE_HOOKS = re.compile(r"disableAllHooks", re.I)
 
 # 쓰기·지우기·옮기기로 읽히는 셸 낱말. 경로 언급과 함께 있을 때만 본다.
@@ -430,7 +436,7 @@ def judge(act: Action) -> list[Hit]:
             hit("firewall")
         if BIND_SHELL.search(cmd):
             hit("bind")
-        if (any(HARNESS_SHELL.search(s) and not HELP.search(s) for s in segments(QUOTED_PHRASE.sub(" ", cmd)))
+        if (any(HARNESS_SHELL.search(s) and not HELP.search(s) for s in segments(_strip_phrases(cmd)))
                 or _writes_to(cmd, segs, values, lambda s: bool(HARNESS_PATH.search(s)))):
             hit("harness")
         if DISABLE_HOOKS.search(cmd) and (any(DISABLE_HOOKS.search(s) and SHELL_WRITE.search(s) for s in segs)
