@@ -10,6 +10,9 @@ import sys
 # `add_args(parser)`와 실행하는 `<함수>(args) -> int`를 가진다.
 COMMANDS: list[tuple[str, str, str, str]] = [
     ("where", "oraena.config_cmd", "run", "데이터 폴더 위치를 보여 준다"),
+    ("index", "oraena.index", "run", "wiki/의 index.md, log.md, 파생 색인을 다시 만든다"),
+    ("check", "oraena.check", "run_cli", "OKF 적합 조건과 위키 규칙을 검사한다"),
+    ("migrate", "oraena.migrate", "run", "0.3 OKF를 새 형식으로 새 폴더에 옮긴다"),
 ]
 
 
