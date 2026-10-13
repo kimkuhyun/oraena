@@ -3,7 +3,8 @@
 - knowledge/, projects/, personal/ → wiki/. 메타정보를 OKF 키로 바꾸고 type을 붙인다.
 - records/ → raw/records/, corrections/ → raw/corrections/ (형식 그대로).
 - rules/, skills/, AGENTS.md → raw/archive-0.3/ (보관).
-- 생성 파일(index.md)은 옮기지 않고 다시 만든다. 숨김 폴더는 .git만 옮긴다(--with-git).
+- 생성 파일(index.md)은 옮기지 않고 다시 만든다. 숨김 폴더는 옮기지 않는다.
+- 새 폴더에 로컬 git을 새로 만든다. `--with-git`이면 원본 .git을 옮긴다.
 - 모든 Markdown의 상대 링크를 새 경로로 다시 쓴다.
 """
 
@@ -15,7 +16,7 @@ import shutil
 from importlib import resources
 from pathlib import Path
 
-from oraena import check, config, index, okf
+from oraena import check, config, index, localgit, okf
 
 WIKI_DIRS = ("knowledge", "projects", "personal")
 RAW_DIRS = {"records": "records", "corrections": "corrections"}
@@ -228,6 +229,9 @@ def migrate(src: Path, dst: Path, with_git: bool = False) -> dict:
     write_agent(dst)
     built = index.build(dst)
     problems = check.run(dst)
+    if not with_git:
+        # 옛 이력은 옛 경로라 목차의 변경 기록과 맞지 않는다. 원본 폴더의 .git에 그대로 남는다.
+        stats["git"] = localgit.init(dst, "oraena migrate: 0.3 OKF를 새 형식으로 옮김")
     stats["documents"] = built["documents"]
     stats["errors"] = sum(1 for p in problems if p.is_error)
     stats["warnings"] = sum(1 for p in problems if not p.is_error)
@@ -241,7 +245,7 @@ def migrate(src: Path, dst: Path, with_git: bool = False) -> dict:
 def add_args(parser) -> None:
     parser.add_argument("src", help="0.3 형식 OKF 폴더(읽기만 함)")
     parser.add_argument("dst", help="새 형식으로 만들 빈 폴더")
-    parser.add_argument("--with-git", action="store_true", help="원본의 .git도 옮긴다")
+    parser.add_argument("--with-git", action="store_true", help="원본 .git을 옮긴다(기본: 새 저장소로 시작)")
 
 
 def run(args) -> int:
@@ -249,4 +253,6 @@ def run(args) -> int:
     print(f"wiki 문서 {stats['wiki']}, raw 문서 {stats['raw']}, 그 밖 파일 {stats['other']}, "
           f"다시 쓴 링크 {stats['links']}")
     print(f"검사: 문서 {stats['documents']}, 오류 {stats['errors']}, 경고 {stats['warnings']} {stats['codes']}")
+    if "git" in stats:
+        print("로컬 git: " + ("새 저장소, 첫 커밋" if stats["git"] else "만들지 못함(git 확인)"))
     return 0 if stats["errors"] == 0 else 1
