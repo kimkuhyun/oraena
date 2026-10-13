@@ -69,8 +69,9 @@ def analyze(days: int = 7) -> Report:
         per_host[s.host].append(s)
         for i, prompt in enumerate(s.prompts):
             if CORRECTION_CUE.search(prompt[:300]):
-                rep.corrections.append({"host": s.host, "session": s.id, "cwd": s.cwd,
-                                        "turn": i, "text": prompt[:300]})
+                rep.corrections.append({"host": s.host, "session": s.id, "cwd": s.cwd, "turn": i,
+                                        "before": s.before[i] if i < len(s.before) else "",
+                                        "text": prompt[:300]})
         failed: list[str] = []
         wrote_wiki = False
         research = 0

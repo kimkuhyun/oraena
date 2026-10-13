@@ -36,6 +36,7 @@ class Session:
     cwd: str
     started: str
     prompts: list[str] = field(default_factory=list)
+    before: list[str] = field(default_factory=list)  # 발화마다 바로 앞 AI 글의 끝부분(교정 라벨링용)
     tools: list[ToolCall] = field(default_factory=list)
     interrupts: int = 0
     hook_context_chars: int = 0  # 훅이 넣은 글자 수
@@ -54,9 +55,13 @@ def _recent(paths, days: int):
     return [p for p in paths if p.stat().st_mtime >= cutoff]
 
 
+BEFORE_CHARS = 300
+
+
 def read_claude(path: Path) -> Session | None:
     s: Session | None = None
     pending: dict[str, ToolCall] = {}
+    last_text = ""
     for line in path.open(encoding="utf-8"):
         try:
             d = json.loads(line)
@@ -77,6 +82,7 @@ def read_claude(path: Path) -> Session | None:
                     human = _human(b.get("text", ""))
                     if human:
                         s.prompts.append(human)
+                        s.before.append(last_text[-BEFORE_CHARS:])
                 elif b.get("type") == "tool_result":
                     call = pending.pop(b.get("tool_use_id", ""), None)
                     text = b.get("content")
@@ -89,6 +95,8 @@ def read_claude(path: Path) -> Session | None:
                         s.hook_blocks.append(text[:200])
         elif kind == "assistant":
             for b in d.get("message", {}).get("content", []) or []:
+                if b.get("type") == "text" and b.get("text", "").strip():
+                    last_text = b["text"]
                 if b.get("type") == "tool_use":
                     call = ToolCall(b.get("name", ""), b.get("input") or {})
                     s.tools.append(call)
@@ -104,6 +112,7 @@ def read_claude(path: Path) -> Session | None:
 
 def read_codex(path: Path) -> Session | None:
     s: Session | None = None
+    last_text = ""
     for line in path.open(encoding="utf-8"):
         try:
             d = json.loads(line)
@@ -127,6 +136,11 @@ def read_codex(path: Path) -> Session | None:
                 human = _human(text)
                 if human:
                     s.prompts.append(human)
+                    s.before.append(last_text[-BEFORE_CHARS:])
+        elif kind == "message" and p.get("role") == "assistant":
+            texts = [i.get("text", "") for i in p.get("content", []) if isinstance(i, dict) and i.get("text")]
+            if texts:
+                last_text = texts[-1]
         elif kind in CODEX_CALLS:
             s.tools.append(_codex_call(p))
     return s
