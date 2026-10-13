@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "oraena"
+version = "2026.10.13"
+description = "개인 OKF 지식 저장소 위에 얹는 Claude Code·Codex 하네스"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "LicenseRef-Proprietary"
+dependencies = ["pyyaml>=6.0"]
+
+[project.scripts]
+oraena = "oraena.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oraena"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
