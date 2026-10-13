@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "oraena"
 version = "2026.10.13"
-description = "개인 OKF 지식 저장소 위에 얹는 Claude Code·Codex 하네스"
+description = "Claude Code와 Codex가 같은 실수를 되풀이하지 않게 하는 개인 위키 하네스"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "LicenseRef-Proprietary"
