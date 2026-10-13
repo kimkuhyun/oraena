@@ -11,7 +11,7 @@ import os
 import re
 from pathlib import Path
 
-from oraena import check, config, index, rules, state
+from oraena import check, config, index, okf, rules, state
 from oraena.hooks.run import context, data_root
 
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"}
@@ -63,6 +63,22 @@ def similar(root: Path, query: str, n: int = 3) -> list[index.Entry]:
     return [e for *_, e in sorted(scored, key=lambda x: (x[0], x[1]))[:n]]
 
 
+def _note_handoff(root: Path, host: str, data: dict, targets: list[Path]) -> None:
+    """AI가 이번 세션에 인수인계서를 쓰면 세션 상태에 적는다. 턴 끝 훅이 '남길지' 다시 묻지 않게 한다."""
+    sid = str(data.get("session_id") or "")
+    st = state.load(root, host, sid)
+    if st.get("handoff"):
+        return
+    for path in targets:
+        try:
+            is_handoff = path.name == "handoff.md" or okf.read(path).meta.get("type") == "Handoff"
+        except OSError:
+            continue
+        if is_handoff:
+            state.update(root, host, sid, handoff=str(path))
+            return
+
+
 def handle(host: str, data: dict) -> dict | None:
     root = data_root()
     if root is None:
@@ -81,6 +97,7 @@ def handle(host: str, data: dict) -> dict | None:
                 state.update(root, host, sid, wrote=True)
         wiki_n = rules.norm(str(config.wiki(root)))
         targets = [Path(p) for p in paths if p.endswith(".md") and rules._under(p, wiki_n)]
+        _note_handoff(root, host, data, targets)
         problems = check.run(root, targets) if targets else []
         if not problems:
             return None

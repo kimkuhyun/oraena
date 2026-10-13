@@ -22,6 +22,16 @@ from oraena.hooks.run import block, data_root
 DECLARE = re.compile(r"쓸\s*스킬\s*[:：]\s*([^\n]+)")
 NAME = re.compile(r"[A-Za-z0-9][\w.:-]*")
 SKILL_BLOCK_LIMIT = 3
+# 인수인계서 없이 이만큼 일한 세션은 남길지 한 번 묻는다. 프로젝트만이 아니라 조사·대화·브레인스토밍도
+# 이어갈 일이 될 수 있어서, 종류를 가리지 않고 AI가 셋 중 하나를 고르게 한다(2026-10-13 사용자 요구).
+RECORD_AFTER_TURNS = 3
+RECORD_ASK = (
+    "이 세션은 연결된 인수인계서 없이 {turns}턴 일했습니다. 셋 중 하나를 고르세요. "
+    "(1) 이어갈 일(프로젝트·조사·대화·브레인스토밍)이면 인수인계서를 씁니다: "
+    "`wiki/projects/<이름>/handoff.md`, type: Handoff, aliases에 사용자가 부를 이름, 작업 폴더가 있으면 work_folder. "
+    "(2) 다시 쓸 사실이면 위키 문서로 씁니다. (3) 둘 다 아니면 아무것도 쓰지 않고 '기록할 것 없음' 한 줄로 끝냅니다. "
+    "이유: 다음 세션이 이어받을 곳이 없습니다."
+)
 
 
 HANGUL = re.compile(r"[가-힣]")
@@ -106,6 +116,10 @@ def handle(host: str, data: dict) -> dict | None:
                 st["reminded"] = True
                 reasons.append(f"이번 세션에 파일을 바꿨는데 인수인계서({handoff})를 고치지 않았습니다. "
                                "'지금 위치'와 '다음 작업'만 고쳐 쓰세요. 이유: 다음 세션이 여기서 시작합니다.")
+        st["turns"] = st.get("turns", 0) + 1
+        if not handoff and not st.get("asked_record") and st["turns"] >= RECORD_AFTER_TURNS:
+            st["asked_record"] = True
+            reasons.append(RECORD_ASK.format(turns=st["turns"]))
     state.save(root, host, sid, st)
     commit(root, host, sid)
     return block(" ".join(reasons)) if reasons else None

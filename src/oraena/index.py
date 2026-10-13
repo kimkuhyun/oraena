@@ -20,6 +20,7 @@ LOG_LIMIT = 20
 H1 = re.compile(r"^#\s+(.+?)\s*$", re.M)
 # 목차 절 순서: 이어서 할 일(인수인계서·작업 문서)을 먼저 보이게 한다.
 INDEX_ORDER = ("Handoff", "WorkDoc", "Decision", "Explanation", "HowTo", "Reference", "Record")
+OPEN_DESC = 60  # 지도의 열린 일 줄에 싣는 설명 글자 수(지도 예산 약 2,000토큰)
 
 
 @dataclass
@@ -121,6 +122,15 @@ def render_index(wiki: Path, folder: Path, by_dir: dict[Path, list[Entry]]) -> s
         for sub in subs:
             lines.append(_line(sub.name + "/", f"{sub.name}/index.md", _subdir_summary(wiki, sub, by_dir)))
         lines.append("")
+    if folder == wiki:
+        # 지도는 매 세션 실린다. 열린 일(프로젝트·조사·대화 무엇이든)을 여기 두면 폴더 없이 시작해도
+        # AI가 발화를 보고 이어갈 인수인계서를 고를 수 있다.
+        open_work = sorted((e for entries in by_dir.values() for e in entries
+                            if e.type == "Handoff" and e.status != "deprecated"), key=lambda e: e.path)
+        if open_work:
+            lines += ["# 열린 일", ""]
+            lines += [_line(e.title, e.path, e.description[:OPEN_DESC]) for e in open_work]
+            lines.append("")
     groups: dict[str, list[Entry]] = defaultdict(list)
     for e in by_dir.get(folder, []):
         groups[e.type or "Untyped"].append(e)
