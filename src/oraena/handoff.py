@@ -14,7 +14,8 @@ from oraena import config, index, okf
 
 BUDGET = 1000  # 토큰(추정). 설계서 3.3
 # 앞에 둘수록 먼저 싣는다. 0.3 제목(현재 상황, 주의할 점)도 받는다.
-SECTION_ORDER = (r"지금 위치|현재 상황", r"다음 작업", r"정한 것|주의할 점")
+# 예산을 채우는 순서. 규칙 링크 절은 짧고 빠지면 안 되므로 먼저 담는다. 실을 때는 문서 순서대로 둔다.
+SECTION_ORDER = (r"이 일의 규칙", r"지금 위치|현재 상황", r"다음 작업", r"정한 것|주의할 점")
 HEADING = re.compile(r"^##\s+(.+?)\s*$", re.M)
 
 
@@ -66,20 +67,21 @@ def brief(path: Path, budget: int = BUDGET) -> str:
     for i, m in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
         sections.append((m.group(1), body[m.start():end].strip()))
-    picked, used = [], 0
+    picked: dict[int, str] = {}  # 문서 안 순서 → 담을 글
+    used = 0
     for pattern in SECTION_ORDER:
-        for title, text in sections:
-            if not re.search(pattern, title):
+        for i, (title, text) in enumerate(sections):
+            if i in picked or not re.search(pattern, title):
                 continue
             room = budget - used
             if room <= 50:
                 break
             if okf.approx_tokens(text) > room:
                 text = _cut(text, room) + "\n…(줄임)"
-            picked.append(text)
+            picked[i] = text
             used += okf.approx_tokens(text)
-    picked.append(f"전체는 {path.as_posix()}를 연다.")
-    return head + "\n\n" + "\n\n".join(picked)
+    parts = [picked[i] for i in sorted(picked)] + [f"전체는 {path.as_posix()}를 연다."]
+    return head + "\n\n" + "\n\n".join(parts)
 
 
 def _cut(text: str, tokens: int) -> str:

@@ -63,7 +63,35 @@ def type_of(rel: Path, meta: dict) -> str:
     return "Reference"
 
 
-def convert_meta(rel: Path, doc: okf.Doc) -> okf.Doc:
+RULES_HEADING = "## 이 일의 규칙"
+
+
+def _rules_section(body: str, rel: Path, rules: list, src: Path) -> str:
+    """0.3 인수인계서의 `rules:` 목록(프로젝트 규칙 페이지)을 본문 링크 절로 옮긴다.
+
+    0.3은 이 목록의 페이지를 세션 시작 때 실었다. 새 구조는 메타정보로 싣지 않으므로, 인수인계서와
+    함께 실리는 본문에 링크로 둔다. 링크는 원본 위치 기준으로 만들고, 뒤의 링크 다시 쓰기가 새 경로로 바꾼다.
+    """
+    lines = []
+    for item in rules:
+        target = src / str(item)
+        if not target.is_file():
+            continue
+        page = okf.read(target)
+        m = H1_LINE.match(page.body)
+        title = str(page.meta.get("title") or "").strip() or (m.group(1).strip() if m else target.stem)
+        link = Path(os.path.relpath(target, (src / rel).parent)).as_posix()
+        lines.append(f"- [{title.replace('[', '(').replace(']', ')')}]({link})")
+    if not lines:
+        return body
+    section = f"{RULES_HEADING}\n\n" + "\n".join(lines) + "\n"
+    caution = re.search(r"^## 주의할 점", body, re.M)
+    if caution:
+        return body[:caution.start()] + section + "\n" + body[caution.start():]
+    return body.rstrip("\n") + "\n\n" + section
+
+
+def convert_meta(rel: Path, doc: okf.Doc, src: Path | None = None) -> okf.Doc:
     meta = doc.meta if isinstance(doc.meta, dict) else {}
     body = doc.body
     title = str(meta.get("title") or "").strip()
@@ -88,6 +116,8 @@ def convert_meta(rel: Path, doc: okf.Doc) -> okf.Doc:
             new["status"] = "deprecated"
         if meta.get("folder"):
             new["work_folder"] = meta["folder"]
+        if src is not None and isinstance(meta.get("rules"), list):
+            body = _rules_section(body, rel, meta["rules"], src)
     elif old_status in DONE_STATUS:
         new["status"] = "deprecated"
     for key, value in meta.items():
@@ -174,7 +204,7 @@ def migrate(src: Path, dst: Path, with_git: bool = False) -> dict:
             continue
         text = old.read_text(encoding="utf-8")
         if new.is_relative_to(dst / config.WIKI):
-            doc = convert_meta(old.relative_to(src), okf.parse(text, new))
+            doc = convert_meta(old.relative_to(src), okf.parse(text, new), src)
             doc.body, n = rewrite_links(doc.body, old, new, mapping)
             okf.write(doc)
             stats["wiki"] += 1

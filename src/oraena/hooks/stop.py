@@ -24,7 +24,8 @@ NAME = re.compile(r"[A-Za-z0-9][\w.:-]*")
 SKILL_BLOCK_LIMIT = 3
 
 
-def unread_skills(root: Path, host: str, data: dict) -> list[str]:
+def check_skills(root: Path, host: str, data: dict) -> tuple[list[str], list[str]]:
+    """(이번 턴에 밝힌 스킬, 그중 SKILL.md를 읽지 않은 스킬)."""
     turn = transcripts.last_turn(host, data.get("transcript_path"))
     texts = turn.texts + [str(data.get("last_assistant_message") or "")]
     declared: list[str] = []
@@ -34,12 +35,13 @@ def unread_skills(root: Path, host: str, data: dict) -> list[str]:
     known = {s.name: s for s in skills.all_skills(root)}
     declared = [n for n in dict.fromkeys(declared) if n in known]
     if not declared:
-        return []
+        return [], []
     # Codex 코드 모드 JS 안의 경로는 이스케이프가 겹친다. 구분자 덩어리를 / 하나로 접는다.
     blob = re.sub(r"[\\/]+", "/", "\n".join(json.dumps(c.input, ensure_ascii=False) for c in turn.tools)).lower()
     invoked = {str(c.input.get("skill", "")).split(":")[-1] for c in turn.tools if c.name == "Skill"}
-    return [n for n in declared
-            if n not in invoked and f"{known[n].path.parent.name.lower()}/skill.md" not in blob]
+    unread = [n for n in declared
+              if n not in invoked and f"{known[n].path.parent.name.lower()}/skill.md" not in blob]
+    return declared, unread
 
 
 def commit(root: Path, host: str, sid: str) -> None:
@@ -65,7 +67,10 @@ def handle(host: str, data: dict) -> dict | None:
     st = state.load(root, host, sid)
     reasons = []
     if not data.get("stop_hook_active"):
-        missing = unread_skills(root, host, data)
+        declared, missing = check_skills(root, host, data)
+        if declared:
+            # 압축 뒤 세션 시작 훅이 이 스킬 경로를 다시 알린다(독립 검토 14번).
+            st["skills"] = sorted(set(st.get("skills", [])) | set(declared))
         if missing and st.get("skill_blocks", 0) < SKILL_BLOCK_LIMIT:
             st["skill_blocks"] = st.get("skill_blocks", 0) + 1
             reasons.append(f"'쓸 스킬'로 밝힌 {', '.join(missing)}의 SKILL.md를 읽지 않았습니다. "

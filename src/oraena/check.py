@@ -15,6 +15,7 @@ FOLDER_INDEX_BUDGET = 1500  # 토큰(추정). 넘으면 하위 폴더로 나눈�
 ROOT_INDEX_BUDGET = 2000  # 토큰(추정). 상시 지도 예산.
 INDEX_LINE = re.compile(r"^(#\s+\S.*|\*\s+\[[^\]]+\]\([^)]+\)(\s+-\s+.*)?)$")
 LOG_LINE = re.compile(r"^(##\s+\d{4}-\d{2}-\d{2}|\*\s+.+)$")
+BLOCK_LIST = re.compile(r"^(?:aliases|type):[ \t]*\r?\n[ \t]*-", re.M)  # 블록 형식 목록(설계서 11절)
 
 
 @dataclass
@@ -50,6 +51,10 @@ def check_doc(wiki: Path, path: Path) -> list[Problem]:
     aliases = doc.meta.get("aliases")
     if aliases is not None and not isinstance(aliases, list):
         out.append(Problem(path, "E007", "aliases는 목록으로 씁니다. 예: aliases: [오라에나, ORAENA]"))
+    front = okf.FRONT.match(path.read_text(encoding="utf-8"))
+    if front and BLOCK_LIST.search(front.group(1)):
+        out.append(Problem(path, "W004", "aliases·type은 한 줄로 씁니다. 예: aliases: [오라에나, ORAENA]. "
+                                         "줄 단위 검색에 걸리게 하기 위해서다."))
     for _a, _b, target in okf.links(doc.body):
         rel, _anchor = okf.split_anchor(target)
         if rel and not (path.parent / rel).exists():

@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import time
 
-from oraena import config, handoff, state
+from oraena import config, handoff, skills, state
 from oraena.hooks.run import context, data_root
 
 
@@ -33,6 +33,12 @@ def handle(host: str, data: dict) -> dict | None:
     if source == "startup":
         state.cleanup(root)
     st = state.load(root, host, sid)
+    if source == "compact" and st.get("skills"):
+        # 직접 부르기 전용 스킬은 Read로 읽어 호스트가 압축 뒤 다시 붙여 주지 않는다.
+        paths = {s.name: s.path for s in skills.all_skills(root)}
+        lines = [f"- {n}: {paths[n].as_posix()}" for n in st["skills"] if n in paths]
+        if lines:
+            parts.append("이 세션에서 쓴 스킬(압축으로 본문이 빠졌으면 다시 읽는다):\n" + "\n".join(lines))
     st.setdefault("started", time.time())
     st["handoff"] = str(found) if found else ""
     state.save(root, host, sid, st)
