@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 
-from oraena import handoff, skills, state
+from oraena import handoff, skills, state, transcripts
 from oraena.hooks.run import context, data_root
 
 ASK = ("작업 전에 '쓸 스킬: 이름' 또는 '쓸 스킬: 없음' 한 줄을 먼저 쓰세요. "
@@ -21,7 +21,11 @@ def handle(host: str, data: dict) -> dict | None:
     root = data_root()
     if root is None:
         return None
-    prompt = str(data.get("prompt") or "")
+    # 하위 에이전트 보고·작업 알림도 발화로 들어온다. 사람이 친 글만 본다(2026-10-13 보고문의 "구직"으로
+    # 구직 인수인계서가 잘못 실린 일).
+    prompt = transcripts._human(str(data.get("prompt") or "")) or ""
+    if not prompt:
+        return None
     sid = str(data.get("session_id") or "")
     parts = []
     st = state.load(root, host, sid)
