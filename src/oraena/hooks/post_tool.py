@@ -24,9 +24,10 @@ MAX_PROBLEMS = 5
 
 def _empty(resp) -> bool:
     if isinstance(resp, dict):
-        for key in ("numFiles", "numMatches", "numLines"):
-            if key in resp:
-                return not resp[key]
+        # Grep content 모드는 결과가 있어도 numFiles가 0이고 numLines에만 센다. 있는 키가 모두 0일 때만 비었다.
+        counts = [resp[k] for k in ("numFiles", "numMatches", "numLines") if k in resp]
+        if counts:
+            return not any(counts)
         if "filenames" in resp:
             return not resp["filenames"] and not resp.get("content")
         for key in ("stdout", "output", "content", "result"):
