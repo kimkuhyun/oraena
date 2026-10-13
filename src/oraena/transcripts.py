@@ -165,6 +165,7 @@ class Turn:
 
     texts: list[str] = field(default_factory=list)
     tools: list[ToolCall] = field(default_factory=list)
+    prompt: str = ""  # 이 턴을 연 사람 발화
 
 
 TAIL_BYTES = 4_000_000  # 턴 끝 훅은 긴 대화 기록의 끝만 읽는다
@@ -195,8 +196,9 @@ def last_turn(host: str, transcript_path: str | None) -> Turn:
             p = d.get("payload") or {}
             kind = p.get("type")
             if kind == "message" and p.get("role") == "user":
-                if any(_human(i.get("text", "")) for i in p.get("content", []) if isinstance(i, dict)):
-                    turn = Turn()
+                humans = [h for i in p.get("content", []) if isinstance(i, dict) and (h := _human(i.get("text", "")))]
+                if humans:
+                    turn = Turn(prompt=humans[-1])
             elif kind == "message" and p.get("role") == "assistant":
                 turn.texts += [i.get("text", "") for i in p.get("content", []) if isinstance(i, dict) and i.get("text")]
             elif kind in CODEX_CALLS:
@@ -206,8 +208,10 @@ def last_turn(host: str, transcript_path: str | None) -> Turn:
         content = (d.get("message") or {}).get("content")
         blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
         if kind == "user" and not d.get("isMeta"):
-            if any(b.get("type") == "text" and _human(b.get("text", "")) for b in blocks if isinstance(b, dict)):
-                turn = Turn()
+            humans = [h for b in blocks if isinstance(b, dict) and b.get("type") == "text"
+                      and (h := _human(b.get("text", "")))]
+            if humans:
+                turn = Turn(prompt=humans[-1])
         elif kind == "assistant":
             for b in blocks:
                 if not isinstance(b, dict):

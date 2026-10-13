@@ -24,9 +24,25 @@ NAME = re.compile(r"[A-Za-z0-9][\w.:-]*")
 SKILL_BLOCK_LIMIT = 3
 
 
-def check_skills(root: Path, host: str, data: dict) -> tuple[list[str], list[str]]:
+HANGUL = re.compile(r"[가-힣]")
+LATIN = re.compile(r"[A-Za-z]")
+CODE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+|[A-Za-z]:[\\/]\S+", re.S)
+
+
+def english_reply(prompt: str, reply: str) -> bool:
+    """한국어 발화에 영어 답인가. 코드·경로·주소는 빼고 글자 수로 판정한다.
+
+    2026-10-13 같은 세션에서 "한국어로" 교정이 두 번 연달아 나왔다. 기계가 판정할 수 있어 훅으로 옮겼다.
+    """
+    if not HANGUL.search(prompt or ""):
+        return False
+    body = CODE.sub(" ", reply or "")
+    hangul, latin = len(HANGUL.findall(body)), len(LATIN.findall(body))
+    return latin >= 200 and hangul < latin * 0.25
+
+
+def check_skills(root: Path, turn: transcripts.Turn, data: dict) -> tuple[list[str], list[str]]:
     """(이번 턴에 밝힌 스킬, 그중 SKILL.md를 읽지 않은 스킬)."""
-    turn = transcripts.last_turn(host, data.get("transcript_path"))
     texts = turn.texts + [str(data.get("last_assistant_message") or "")]
     declared: list[str] = []
     for text in texts:
@@ -67,7 +83,12 @@ def handle(host: str, data: dict) -> dict | None:
     st = state.load(root, host, sid)
     reasons = []
     if not data.get("stop_hook_active"):
-        declared, missing = check_skills(root, host, data)
+        turn = transcripts.last_turn(host, data.get("transcript_path"))
+        reply = str(data.get("last_assistant_message") or (turn.texts[-1] if turn.texts else ""))
+        if english_reply(turn.prompt, reply):
+            reasons.append("사용자는 한국어로 말했는데 답이 영어입니다. 같은 내용을 한국어로 다시 쓰세요. "
+                           "이유: 사용자 규칙이고 같은 교정이 반복됐습니다.")
+        declared, missing = check_skills(root, turn, data)
         if declared:
             # 압축 뒤 세션 시작 훅이 이 스킬 경로를 다시 알린다(독립 검토 14번).
             st["skills"] = sorted(set(st.get("skills", [])) | set(declared))
