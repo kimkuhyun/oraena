@@ -127,15 +127,82 @@ def read_codex(path: Path) -> Session | None:
                 human = _human(text)
                 if human:
                     s.prompts.append(human)
-        elif kind in ("function_call", "custom_tool_call", "local_shell_call"):
-            raw = p.get("arguments") or p.get("input") or p.get("action") or {}
-            if isinstance(raw, str):
-                try:
-                    raw = json.loads(raw)
-                except json.JSONDecodeError:
-                    raw = {"text": raw}
-            s.tools.append(ToolCall(p.get("name") or kind, raw if isinstance(raw, dict) else {"value": raw}))
+        elif kind in CODEX_CALLS:
+            s.tools.append(_codex_call(p))
     return s
+
+
+CODEX_CALLS = ("function_call", "custom_tool_call", "local_shell_call")
+
+
+def _codex_call(p: dict) -> ToolCall:
+    raw = p.get("arguments") or p.get("input") or p.get("action") or {}
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            raw = {"text": raw}
+    return ToolCall(p.get("name") or p.get("type", ""), raw if isinstance(raw, dict) else {"value": raw})
+
+
+@dataclass
+class Turn:
+    """마지막 사람 발화 뒤의 모델 글과 도구 호출."""
+
+    texts: list[str] = field(default_factory=list)
+    tools: list[ToolCall] = field(default_factory=list)
+
+
+TAIL_BYTES = 4_000_000  # 턴 끝 훅은 긴 대화 기록의 끝만 읽는다
+
+
+def _tail(path: Path):
+    size = path.stat().st_size
+    with path.open("rb") as f:
+        if size > TAIL_BYTES:
+            f.seek(size - TAIL_BYTES)
+            f.readline()
+        data = f.read()
+    for line in data.decode("utf-8", errors="replace").splitlines():
+        try:
+            yield json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+
+def last_turn(host: str, transcript_path: str | None) -> Turn:
+    turn = Turn()
+    if not transcript_path or not Path(transcript_path).exists():
+        return turn
+    for d in _tail(Path(transcript_path)):
+        if host == "codex":
+            if d.get("type") != "response_item":
+                continue
+            p = d.get("payload") or {}
+            kind = p.get("type")
+            if kind == "message" and p.get("role") == "user":
+                if any(_human(i.get("text", "")) for i in p.get("content", []) if isinstance(i, dict)):
+                    turn = Turn()
+            elif kind == "message" and p.get("role") == "assistant":
+                turn.texts += [i.get("text", "") for i in p.get("content", []) if isinstance(i, dict) and i.get("text")]
+            elif kind in CODEX_CALLS:
+                turn.tools.append(_codex_call(p))
+            continue
+        kind = d.get("type")
+        content = (d.get("message") or {}).get("content")
+        blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
+        if kind == "user" and not d.get("isMeta"):
+            if any(b.get("type") == "text" and _human(b.get("text", "")) for b in blocks if isinstance(b, dict)):
+                turn = Turn()
+        elif kind == "assistant":
+            for b in blocks:
+                if not isinstance(b, dict):
+                    continue
+                if b.get("type") == "text":
+                    turn.texts.append(b.get("text", ""))
+                elif b.get("type") == "tool_use":
+                    turn.tools.append(ToolCall(b.get("name", ""), b.get("input") or {}))
+    return turn
 
 
 def sessions(days: int = 30):

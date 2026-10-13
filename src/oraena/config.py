@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 CONFIG = Path.home() / ".oraena.json"
@@ -29,7 +30,9 @@ def save(values: dict) -> None:
 
 
 def data_root() -> Path:
-    root = load().get("root")
+    # 환경 변수가 설정 파일보다 앞선다. 사본으로 시험할 때 쓴다. 훅은 호스트의 환경을 받으므로
+    # 모델이 셸에서 바꿔도 훅에는 닿지 않는다.
+    root = os.environ.get("ORAENA_ROOT") or load().get("root")
     if not root:
         raise NotConfigured("데이터 폴더가 정해지지 않았습니다. `oraena init <폴더>`를 먼저 실행합니다.")
     return Path(root)

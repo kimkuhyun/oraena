@@ -39,6 +39,16 @@ def block(reason: str) -> dict:
     return {"decision": "block", "reason": reason}
 
 
+def data_root():
+    """데이터 폴더. 정해지지 않았거나 없으면 None(훅은 조용히 지나간다)."""
+    from oraena import config
+    try:
+        root = config.data_root()
+    except config.NotConfigured:
+        return None
+    return root if root.exists() else None
+
+
 def emit(obj: dict) -> None:
     sys.stdout.buffer.write(json.dumps(obj, ensure_ascii=True).encode("ascii"))
     sys.stdout.buffer.flush()

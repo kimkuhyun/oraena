@@ -30,6 +30,7 @@ class Entry:
     description: str
     aliases: list[str] = field(default_factory=list)
     status: str = ""
+    work_folder: str = ""  # 인수인계서가 붙은 작업 폴더. 세션 시작 훅이 이것으로 인수인계서를 찾는다.
 
 
 def iter_docs(wiki: Path):
@@ -61,6 +62,7 @@ def entry_of(wiki: Path, doc: okf.Doc) -> Entry:
         description=" ".join(str(doc.meta.get("description") or "").split()),
         aliases=[str(a) for a in aliases],
         status=str(doc.meta.get("status") or ""),
+        work_folder=str(doc.meta.get("work_folder") or ""),
     )
 
 

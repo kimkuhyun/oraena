@@ -1,0 +1,91 @@
+"""턴 끝 훅.
+
+1. 이번 턴에 "쓸 스킬: X"라고 밝히고 X의 SKILL.md를 읽지 않았으면 한 번 멈추지 않게 하고 알린다.
+2. 작업 폴더에 인수인계서가 있는데 이번 세션에 파일을 바꾸고 인수인계서를 고치지 않았으면 세션당 한 번 알린다.
+3. 데이터 폴더에 바뀐 것이 있으면 목차를 다시 만들고 로컬 git에 커밋한다(원격 없음, 설계서 6절 결정 3).
+
+반복 상한: 호스트가 이미 한 번 이어 가게 한 턴(stop_hook_active)에는 다시 막지 않는다.
+Codex에는 호스트 상한이 보이지 않아 스킬 알림도 세션당 3번으로 묶는다.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import time
+from pathlib import Path
+
+from oraena import index, skills, state, transcripts
+from oraena.hooks.run import block, data_root
+
+DECLARE = re.compile(r"쓸\s*스킬\s*[:：]\s*([^\n]+)")
+NAME = re.compile(r"[A-Za-z0-9][\w.:-]*")
+SKILL_BLOCK_LIMIT = 3
+
+
+def unread_skills(root: Path, host: str, data: dict) -> list[str]:
+    turn = transcripts.last_turn(host, data.get("transcript_path"))
+    texts = turn.texts + [str(data.get("last_assistant_message") or "")]
+    declared: list[str] = []
+    for text in texts:
+        for m in DECLARE.finditer(text):
+            declared += NAME.findall(m.group(1))
+    known = {s.name: s for s in skills.all_skills(root)}
+    declared = [n for n in dict.fromkeys(declared) if n in known]
+    if not declared:
+        return []
+    # Codex 코드 모드 JS 안의 경로는 이스케이프가 겹친다. 구분자 덩어리를 / 하나로 접는다.
+    blob = re.sub(r"[\\/]+", "/", "\n".join(json.dumps(c.input, ensure_ascii=False) for c in turn.tools)).lower()
+    invoked = {str(c.input.get("skill", "")).split(":")[-1] for c in turn.tools if c.name == "Skill"}
+    return [n for n in declared
+            if n not in invoked and f"{known[n].path.parent.name.lower()}/skill.md" not in blob]
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-c", "core.quotepath=false", *args], cwd=root, capture_output=True,
+                          text=True, encoding="utf-8", timeout=20)
+
+
+def commit(root: Path, host: str, sid: str) -> None:
+    if not (root / ".git").exists():
+        return
+    try:
+        status = _git(root, "status", "--porcelain")
+        lines = status.stdout.splitlines()
+        if status.returncode != 0 or not lines:
+            return
+        if any(line[3:].strip('"').startswith("wiki/") for line in lines):
+            index.build(root)
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "-m", f"{host} 세션 {sid[:8]} 기록")
+    except (OSError, subprocess.SubprocessError):
+        pass  # 다른 세션이 동시에 커밋하면 잠금에 걸린다. 다음 턴 끝에 다시 한다.
+
+
+def handle(host: str, data: dict) -> dict | None:
+    root = data_root()
+    if root is None:
+        return None
+    sid = str(data.get("session_id") or "")
+    st = state.load(root, host, sid)
+    reasons = []
+    if not data.get("stop_hook_active"):
+        missing = unread_skills(root, host, data)
+        if missing and st.get("skill_blocks", 0) < SKILL_BLOCK_LIMIT:
+            st["skill_blocks"] = st.get("skill_blocks", 0) + 1
+            reasons.append(f"'쓸 스킬'로 밝힌 {', '.join(missing)}의 SKILL.md를 읽지 않았습니다. "
+                           "읽고 그 절차대로 했는지 확인하세요. 이유: 스킬은 읽어야 효과가 있습니다.")
+        handoff = st.get("handoff")
+        if handoff and st.get("wrote") and not st.get("reminded"):
+            try:
+                touched = Path(handoff).stat().st_mtime >= st.get("started", time.time())
+            except OSError:
+                touched = True
+            if not touched:
+                st["reminded"] = True
+                reasons.append(f"이번 세션에 파일을 바꿨는데 인수인계서({handoff})를 고치지 않았습니다. "
+                               "'지금 위치'와 '다음 작업'만 고쳐 쓰세요. 이유: 다음 세션이 여기서 시작합니다.")
+    state.save(root, host, sid, st)
+    commit(root, host, sid)
+    return block(" ".join(reasons)) if reasons else None
