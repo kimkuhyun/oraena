@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     # 훅은 매 도구 호출마다 뜨므로 파서 전체를 만들지 않고 바로 넘긴다.
     if argv[:1] == ["hook"]:
-        from oraena.hooks.io import main as hook_main
+        from oraena.hooks.run import main as hook_main
 
         return hook_main(argv[1:])
     parser = build_parser()
