@@ -144,6 +144,7 @@ def run(args) -> int:
     rep = analyze(args.days)
     print(summary(rep))
     if args.json:
+        Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         Path(args.json).write_text(json.dumps(asdict(rep), ensure_ascii=False, indent=1), encoding="utf-8")
         print(f"전체 결과: {args.json}")
     return 0
