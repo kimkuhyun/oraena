@@ -192,21 +192,29 @@ def _version(cmd: str) -> tuple[int, ...] | None:
     return tuple(int(x) for x in m.groups()) if m else None
 
 
+def _root_mark(root: Path) -> str:
+    return f"<!-- oraena root: {root.resolve().as_posix()} -->"
+
+
 def codex_block(root: Path) -> str:
     """Codex 전역 AGENTS.md에 넣을 글. Codex는 `@` 가져오기가 없어 지침과 지도를 그대로 넣는다."""
     agents = (config.agent(root) / "AGENTS.md").read_text(encoding="utf-8").strip()
     map_path = config.wiki(root) / "index.md"
     body = okf.read(map_path).body.strip() if map_path.exists() else ""
-    return f"{agents}\n\n# 지식 지도 ({map_path.as_posix()}, 링크는 이 폴더 기준)\n\n{body}"
+    return f"{_root_mark(root)}\n{agents}\n\n# 지식 지도 ({map_path.as_posix()}, 링크는 이 폴더 기준)\n\n{body}"
 
 
 def refresh_codex_block(root: Path) -> bool:
-    """Codex가 연결돼 있으면 표시 블록을 지금의 지침·지도로 다시 쓴다. 턴 끝 훅이 목차를 만든 뒤 부른다."""
+    """Codex에 이 데이터 폴더가 연결돼 있으면 표시 블록을 지금의 지침·지도로 다시 쓴다.
+
+    턴 끝 훅이 목차를 만든 뒤 부른다. 블록의 데이터 폴더 표지가 같을 때만 쓴다. 다른 폴더(시험용 사본 등)로
+    돈 훅이 사용자의 연결을 덮어쓰지 않게 하기 위해서다(2026-10-13 시험 사본 경로가 실제 파일에 들어간 일).
+    """
     path = codex_home() / "AGENTS.md"
     if not path.exists():
         return False
     text = path.read_text(encoding="utf-8")
-    if CODEX_BEGIN not in text:
+    if CODEX_BEGIN not in text or _root_mark(root) not in text:
         return False
     new = _set_block(text, CODEX_BEGIN, CODEX_END, codex_block(root))
     if new != text:
