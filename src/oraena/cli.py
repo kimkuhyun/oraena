@@ -13,6 +13,8 @@ COMMANDS: list[tuple[str, str, str, str]] = [
     ("index", "oraena.index", "run", "wiki/의 index.md, log.md, 파생 색인을 다시 만든다"),
     ("check", "oraena.check", "run_cli", "OKF 적합 조건과 위키 규칙을 검사한다"),
     ("migrate", "oraena.migrate", "run", "0.3 OKF를 새 형식으로 새 폴더에 옮긴다"),
+    ("skills", "oraena.skills", "run", "스킬 목록을 보여 준다(검색어로 좁힘)"),
+    ("analyze", "oraena.analyze", "run", "대화 기록에서 지표, 교정 후보, 별칭 후보를 뽑는다"),
 ]
 
 
