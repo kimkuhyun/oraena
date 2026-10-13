@@ -273,6 +273,20 @@ SKIP_TOKEN = re.compile(r"^(?:-.*|/[A-Za-z]{1,10}|\d?>.*|[{}()]+|&|\|)$")
 PARAM_WITH_VALUE = re.compile(r"^-(?:ErrorAction|ea|WarningAction|wa)$", re.I)
 
 
+TEXT_SINK = re.compile(r"\bgit\b[^\n]*\bcommit\b|\b(?:cat|tee)\b|\bgh\b", re.I)
+
+
+def drop_text_heredocs(cmd: str) -> str:
+    """커밋 메시지·파일 내용처럼 글로 넘기는 heredoc 본문을 뺀다. 실행되는 본문(python - 등)은 남긴다.
+
+    2026-10-13 커밋 메시지의 영어 낱말 "move"가 Windows move 명령으로 읽혀 raw/ 보호에 잘못 걸렸다.
+    """
+    def repl(m: re.Match) -> str:
+        opener = cmd[cmd.rfind("\n", 0, m.start()) + 1:m.start()]
+        return " " if TEXT_SINK.search(opener) else m.group(0)
+    return HEREDOC.sub(repl, cmd)
+
+
 def segments(cmd: str) -> list[str]:
     """명령을 판정 단위로 나눈다. heredoc·here-string 본문은 통째로 한 단위다(스크립트 하나)."""
     bodies: list[str] = []
@@ -426,15 +440,17 @@ def judge(act: Action) -> list[Hit]:
     cwd = norm(act.cwd) if act.cwd else ""
     cwd_is_temp = bool(TEMP_MARK.search(cwd + "/"))
 
-    for cmd in act.shell:
+    for full in act.shell:
+        # 트레일러·비밀·방화벽·바인드는 글 본문까지 본다. 나머지는 글로 넘기는 heredoc 본문을 빼고 본다.
+        cmd = drop_text_heredocs(full)
         values = variables(cmd)
         segs = segments(cmd)
         low = _shell_norm(expand(cmd, values))
-        if TRAILER.search(cmd):
+        if TRAILER.search(full):
             hit("trailer")
-        if FIREWALL.search(cmd):
+        if FIREWALL.search(full):
             hit("firewall")
-        if BIND_SHELL.search(cmd):
+        if BIND_SHELL.search(full):
             hit("bind")
         if (any(HARNESS_SHELL.search(s) and not HELP.search(s) for s in segments(_strip_phrases(cmd)))
                 or _writes_to(cmd, segs, values, lambda s: bool(HARNESS_PATH.search(s)))):
@@ -450,7 +466,8 @@ def judge(act: Action) -> list[Hit]:
                 return raw_dir + "/" in s or (rel and re.search(r"(?:^|[\s'\"=(])(?:\./)?raw/", s) is not None)
             if _writes_to(cmd, segs, values, in_raw):
                 hit("raw")
-        if _has_secret(cmd) and (GIT_COMMIT.search(cmd) or SHELL_WRITE.search(cmd) or REDIRECT_TARGET.search(low)):
+        if _has_secret(full) and (GIT_COMMIT.search(full) or SHELL_WRITE.search(full) or REDIRECT_TARGET.search(low)
+                                  or full != cmd):
             hit("secret")
         for seg in segs:
             m = DELETE_FS.search(seg)
@@ -460,7 +477,7 @@ def judge(act: Action) -> list[Hit]:
             hit("delete", ASK)
         if OUTWARD.search(cmd) or (HTTP_WRITE.search(cmd) and _outward_url(cmd)):
             hit("outward", ASK)
-        if SYSTEM.search(cmd) and not FIREWALL.search(cmd):
+        if SYSTEM.search(cmd) and not FIREWALL.search(full):
             hit("system", ASK)
         if (INSTALL.search(cmd) or (PIP_GLOBAL.search(cmd) and not VENV.search(cmd))) and not HARNESS_SHELL.search(cmd):
             hit("install", ASK)

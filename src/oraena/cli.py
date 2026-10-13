@@ -16,6 +16,7 @@ COMMANDS: list[tuple[str, str, str, str]] = [
     ("skills", "oraena.skills", "run", "스킬 목록을 보여 준다(검색어로 좁힘)"),
     ("analyze", "oraena.analyze", "run", "대화 기록에서 지표, 교정 후보, 별칭 후보를 뽑는다"),
     ("link", "oraena.link", "run", "작업 폴더에 인수인계서를 붙인다"),
+    ("mv", "oraena.move", "run", "위키 문서를 옮기고 위키 전체의 링크를 고친다"),
     ("connect", "oraena.install", "run_connect", "Claude·Codex에 하네스를 건다(사용자가 직접 실행)"),
     ("disconnect", "oraena.install", "run_disconnect", "하네스 연결을 푼다(사용자가 직접 실행)"),
     ("init", "oraena.install", "run_init", "빈 폴더에 데이터 폴더를 만들고 하네스를 건다(사용자가 직접 실행)"),

@@ -10,6 +10,7 @@
 | `oraena link <이름> --folder <작업 폴더>` | 작업 폴더에 인수인계서를 붙인다 |
 | `oraena check` | OKF 형식과 깨진 링크를 검사한다 |
 | `oraena index` | 목차(`index.md`), 변경 기록(`log.md`), 검색 색인을 다시 만든다 |
+| `oraena mv <문서...> <폴더>` | 위키 문서를 옮기고 위키 전체의 링크를 고친다 |
 | `oraena skills [검색어]` | 스킬 목록을 보인다 |
 | `oraena analyze --days 7` | 대화 기록에서 지표, 교정 후보, 별칭 후보를 뽑는다 |
 | `oraena migrate <0.3 폴더> <새 폴더>` | 0.3 형식 저장소를 새 형식으로 옮긴다 |
