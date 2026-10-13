@@ -16,7 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from oraena import index, skills, state, transcripts
+from oraena import index, localgit, skills, state, transcripts
 from oraena.hooks.run import block, data_root
 
 DECLARE = re.compile(r"쓸\s*스킬\s*[:：]\s*([^\n]+)")
@@ -42,23 +42,17 @@ def unread_skills(root: Path, host: str, data: dict) -> list[str]:
             if n not in invoked and f"{known[n].path.parent.name.lower()}/skill.md" not in blob]
 
 
-def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-c", "core.quotepath=false", *args], cwd=root, capture_output=True,
-                          text=True, encoding="utf-8", timeout=20)
-
-
 def commit(root: Path, host: str, sid: str) -> None:
-    if not (root / ".git").exists():
-        return
     try:
-        status = _git(root, "status", "--porcelain")
-        lines = status.stdout.splitlines()
-        if status.returncode != 0 or not lines:
+        changed = localgit.changed(root)
+        if not changed:
             return
-        if any(line[3:].strip('"').startswith("wiki/") for line in lines):
+        if any(p.startswith("wiki/") for p in changed):
             index.build(root)
-        _git(root, "add", "-A")
-        _git(root, "commit", "-q", "-m", f"{host} 세션 {sid[:8]} 기록")
+        if any(p.startswith(("wiki/", "agent/")) for p in changed):
+            from oraena import install
+            install.refresh_codex_block(root)  # Codex는 가져오기가 없어 지침·지도를 글로 넣어 둔다
+        localgit.commit(root, f"{host} 세션 {sid[:8]} 기록")
     except (OSError, subprocess.SubprocessError):
         pass  # 다른 세션이 동시에 커밋하면 잠금에 걸린다. 다음 턴 끝에 다시 한다.
 

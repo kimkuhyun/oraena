@@ -15,7 +15,13 @@ COMMANDS: list[tuple[str, str, str, str]] = [
     ("migrate", "oraena.migrate", "run", "0.3 OKF를 새 형식으로 새 폴더에 옮긴다"),
     ("skills", "oraena.skills", "run", "스킬 목록을 보여 준다(검색어로 좁힘)"),
     ("analyze", "oraena.analyze", "run", "대화 기록에서 지표, 교정 후보, 별칭 후보를 뽑는다"),
+    ("link", "oraena.link", "run", "작업 폴더에 인수인계서를 붙인다"),
+    ("connect", "oraena.install", "run_connect", "Claude·Codex에 하네스를 건다(사용자가 직접 실행)"),
+    ("disconnect", "oraena.install", "run_disconnect", "하네스 연결을 푼다(사용자가 직접 실행)"),
+    ("init", "oraena.install", "run_init", "빈 폴더에 데이터 폴더를 만들고 하네스를 건다(사용자가 직접 실행)"),
 ]
+# add_args 이름이 기본과 다른 명령
+ARG_BUILDERS = {"init": "add_init_args"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,8 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
     for name, module, _func, help_text in COMMANDS:
         sp = sub.add_parser(name, help=help_text, description=help_text)
         mod = importlib.import_module(module)
-        if hasattr(mod, "add_args"):
-            mod.add_args(sp)
+        builder = ARG_BUILDERS.get(name, "add_args")
+        if hasattr(mod, builder):
+            getattr(mod, builder)(sp)
     return parser
 
 
