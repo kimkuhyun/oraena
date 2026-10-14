@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "oraena"
-version = "2026.10.13"
+version = "2026.10.14"
 description = "Claude Code와 Codex가 같은 실수를 되풀이하지 않게 하는 개인 위키 하네스"
 readme = "README.md"
 requires-python = ">=3.12"

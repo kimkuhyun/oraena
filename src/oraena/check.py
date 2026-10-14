@@ -1,4 +1,4 @@
-"""형식 검사: OKF v0.2 적합 3조건(SPEC §11)과 이 위키의 규칙(설계서 3.3).
+"""형식 검사: OKF v0.2 적합 3조건(SPEC §11)과 이 위키의 규칙(설계서 3.3). 전체 검사는 정책 규칙 파일도 본다.
 
 메시지는 AI가 읽고 바로 고칠 수 있게 고칠 방법을 함께 쓴다.
 """
@@ -120,9 +120,18 @@ def add_args(parser) -> None:
     parser.add_argument("--limit", type=int, default=50, help="보여 줄 문제 수")
 
 
+def check_policy(root: Path) -> list[Problem]:
+    """정책 규칙(`agent/policy/`) 중 읽지 못해 적용되지 않는 파일."""
+    from oraena import policy
+    return [Problem(path, "E011", f"정책 규칙을 읽지 못해 적용하지 않습니다: {problem}.")
+            for path, problem in policy.load(root)[1]]
+
+
 def run_cli(args) -> int:
     root = Path(args.root) if args.root else config.data_root()
     problems = run(root, [Path(p) for p in args.paths] or None)
+    if not args.paths:
+        problems += check_policy(root)
     errors = [p for p in problems if p.is_error]
     for p in problems[: args.limit]:
         try:

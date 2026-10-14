@@ -1,7 +1,7 @@
 """`oraena analyze`: 대화 기록에서 지표와 후보를 뽑는다(설계서 2.1, 3.3, 3.7, 3.8).
 
-교정인지, 같은 교정인지는 판단이 필요하다. 이 스크립트는 낱말 규칙으로 후보만 거르고,
-판정은 주간 정리에서 AI가 초안을 쓰고 사용자가 확정한다.
+교정인지, 같은 교정인지는 판단이 필요하다. 작업 중 AI가 남긴 교정 카드(`raw/corrections/`)는 세기만 하고,
+카드로 남지 않은 교정은 낱말 규칙으로 후보만 거른다. 판정은 주간 정리에서 AI가 초안을 쓰고 사용자가 확정한다.
 """
 
 from __future__ import annotations
@@ -11,10 +11,13 @@ import re
 import statistics
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 
 from oraena import transcripts
 
+# 교정 카드 파일 이름: YYYY-MM-DD-HHMM-<이름>.md (발화 훅이 안내한다)
+CARD_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-\d{4}-.+\.md$")
 CORRECTION_CUE = re.compile(
     r"(아니(야|라|고|지)?\b|아닌데|말고|하지\s?마|하지\s?말|왜\s|다시\s?해|틀렸|잘못|그게 아니|"
     r"제대로|똑바로|빼(고|라|줘)?\b|그만|쓸모없|낭비|이해 ?못|뭐하는|안 ?되잖|했잖아|말했잖)"
@@ -57,6 +60,33 @@ def _wiki_matcher():
         return bool(root) and p.startswith(root) and not any(
             seg in p for seg in ("/raw/", "/records/", "/.oraena/", "/agent/"))
     return is_wiki
+
+
+def _cards(days: int) -> dict:
+    """기간 안의 교정 카드(`raw/corrections/`) 수와 그중 반복(repeat_of가 있는 카드) 수."""
+    from oraena import config, okf
+    out = {"total": 0, "repeats": 0, "repeat_rate": 0.0}
+    try:
+        folder = config.raw(config.data_root()) / "corrections"
+    except (config.NotConfigured, OSError, ValueError):
+        return out
+    if not folder.is_dir():
+        return out
+    since = (date.today() - timedelta(days=days - 1)).isoformat()
+    for path in folder.glob("*.md"):
+        m = CARD_NAME.match(path.name)
+        if not m or m.group(1) < since:
+            continue
+        try:
+            meta = okf.read(path).meta
+        except (OSError, UnicodeDecodeError):
+            continue
+        out["total"] += 1
+        if str(meta.get("repeat_of") or "").strip():
+            out["repeats"] += 1
+    if out["total"]:
+        out["repeat_rate"] = round(out["repeats"] / out["total"], 3)
+    return out
 
 
 def analyze(days: int = 7) -> Report:
@@ -112,6 +142,7 @@ def analyze(days: int = 7) -> Report:
     rep.metrics["search"] = {"total": searches, "empty": empties,
                              "empty_rate": round(empties / searches, 3) if searches else 0.0}
     rep.metrics["correction_candidates"] = len(rep.corrections)
+    rep.metrics["correction_cards"] = _cards(days)
     rep.skill_use = dict(skill_use.most_common())
     return rep
 
@@ -128,6 +159,8 @@ def summary(rep: Report) -> str:
             )
     sm = rep.metrics["search"]
     lines.append(f"- 검색(Grep·Glob): {sm['total']}회 중 빈 결과 {sm['empty']} ({sm['empty_rate']:.1%})")
+    cards = rep.metrics["correction_cards"]
+    lines.append(f"- 교정 카드: {cards['total']}장, 그중 반복 {cards['repeats']}장 ({cards['repeat_rate']:.1%})")
     lines.append(f"- 교정 후보 발화: {len(rep.corrections)} (낱말 규칙, 판정 전)")
     lines.append(f"- 별칭 후보: {len(rep.alias_candidates)}, 지식 후보 세션: {len(rep.knowledge_candidates)}")
     top = ", ".join(f"{k} {v}" for k, v in list(rep.skill_use.items())[:5]) or "없음"

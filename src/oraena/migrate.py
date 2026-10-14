@@ -158,6 +158,7 @@ def rewrite_links(text: str, old_file: Path, new_file: Path, mapping: dict[Path,
 def write_agent(dst: Path) -> None:
     agent = config.agent(dst)
     (agent / "skills").mkdir(parents=True, exist_ok=True)
+    (agent / "policy").mkdir(exist_ok=True)  # 사용자 정책 규칙(oraena.policy). 처음에는 비어 있다
     tpl = resources.files("oraena") / "templates"
     text = (tpl / "AGENTS.md").read_text(encoding="utf-8").replace("{root}", dst.as_posix())
     (agent / "AGENTS.md").write_text(text, encoding="utf-8", newline="\n")

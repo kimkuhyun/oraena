@@ -23,7 +23,7 @@ DECLARE = re.compile(r"쓸\s*스킬\s*[:：]\s*([^\n]+)")
 NAME = re.compile(r"[A-Za-z0-9][\w.:-]*")
 SKILL_BLOCK_LIMIT = 3
 # 인수인계서 없이 이만큼 일한 세션은 남길지 한 번 묻는다. 프로젝트만이 아니라 조사·대화·브레인스토밍도
-# 이어갈 일이 될 수 있어서, 종류를 가리지 않고 AI가 셋 중 하나를 고르게 한다(2026-10-13 사용자 요구).
+# 이어갈 일이 될 수 있어서, 종류를 가리지 않고 AI가 셋 중 하나를 고르게 한다.
 RECORD_AFTER_TURNS = 3
 RECORD_ASK = (
     "이 세션은 연결된 인수인계서 없이 {turns}턴 일했습니다. 셋 중 하나를 고르세요. "
@@ -32,23 +32,6 @@ RECORD_ASK = (
     "(2) 다시 쓸 사실이면 위키 문서로 씁니다. (3) 둘 다 아니면 아무것도 쓰지 않고 '기록할 것 없음' 한 줄로 끝냅니다. "
     "이유: 다음 세션이 이어받을 곳이 없습니다."
 )
-
-
-HANGUL = re.compile(r"[가-힣]")
-LATIN = re.compile(r"[A-Za-z]")
-CODE = re.compile(r"```.*?```|`[^`\n]*`|https?://\S+|[A-Za-z]:[\\/]\S+", re.S)
-
-
-def english_reply(prompt: str, reply: str) -> bool:
-    """한국어 발화에 영어 답인가. 코드·경로·주소는 빼고 글자 수로 판정한다.
-
-    2026-10-13 같은 세션에서 "한국어로" 교정이 두 번 연달아 나왔다. 기계가 판정할 수 있어 훅으로 옮겼다.
-    """
-    if not HANGUL.search(prompt or ""):
-        return False
-    body = CODE.sub(" ", reply or "")
-    hangul, latin = len(HANGUL.findall(body)), len(LATIN.findall(body))
-    return latin >= 200 and hangul < latin * 0.25
 
 
 def check_skills(root: Path, turn: transcripts.Turn, data: dict) -> tuple[list[str], list[str]]:
@@ -94,10 +77,6 @@ def handle(host: str, data: dict) -> dict | None:
     reasons = []
     if not data.get("stop_hook_active"):
         turn = transcripts.last_turn(host, data.get("transcript_path"))
-        reply = str(data.get("last_assistant_message") or (turn.texts[-1] if turn.texts else ""))
-        if english_reply(turn.prompt, reply):
-            reasons.append("사용자는 한국어로 말했는데 답이 영어입니다. 같은 내용을 한국어로 다시 쓰세요. "
-                           "이유: 사용자 규칙이고 같은 교정이 반복됐습니다.")
         declared, missing = check_skills(root, turn, data)
         if declared:
             # 압축 뒤 세션 시작 훅이 이 스킬 경로를 다시 알린다(독립 검토 14번).
