@@ -41,7 +41,7 @@ SAY = {
                "이유: AI가 자기 경계를 풀 수 있으면 경계가 아닙니다. 바꿀 내용과 명령을 사용자에게 보여 주세요.",
     "policy": "정책 규칙(agent/policy/)은 AI가 쓰거나 고칠 수 없습니다. 새 규칙은 raw/proposals/에 제안 파일로 쓰고 "
               "사용자에게 알리세요. 이유: AI가 자기 규칙을 바꿀 수 있으면 경계가 아닙니다.",
-    "raw": "raw/의 기존 파일은 고치거나 옮기거나 지우지 마세요. 새 파일은 Write 도구로 만드세요. "
+    "raw": "raw/의 기존 파일은 고치거나 옮기거나 지우지 마세요. 새 파일은 Write 도구나 새 경로로의 복사(cp, >)로 만드세요. "
            "이유: 원시 기록은 근거라서 바뀌면 안 됩니다.",
 }
 CODEX_ASK = " Codex에는 확인 창이 없어 막았습니다. 명령을 사용자에게 보여 주고 직접 실행하게 하세요."
@@ -201,6 +201,57 @@ def _writes_to(cmd: str, segs: list[str], values: dict[str, str], test) -> bool:
     return False
 
 
+TEE = re.compile(r"^\s*tee\b", re.I)
+GLOB = re.compile(r"[*?\[]")
+
+
+def _real(path: str, cwd: str) -> str:
+    """셸 글의 경로를 os가 찾을 수 있는 경로로 편다(Git Bash의 /c/... 포함)."""
+    p = path.strip().strip("'\"")
+    p = re.sub(r"^/([a-z])/", r"\1:/", p)
+    return p if os.path.isabs(p) or not cwd else os.path.join(cwd, p)
+
+
+def _changes_existing(cmd: str, segs: list[str], values: dict[str, str], test, cwd: str) -> bool:
+    """_writes_to와 같되, 셸로 새 파일을 만드는 것은 뺀다(raw/ 보호용).
+
+    새 경로로의 복사(cp, copy, Copy-Item), `>` 리다이렉트, tee(-a 없이)는 대상이 없을 때만 지나간다.
+    이미 있는 파일을 덮거나, 덧붙이거나(>>, tee -a), 대상에 와일드카드가 있으면 바꾸는 것으로 본다.
+    """
+    def existing(token: str) -> bool:
+        s = _shell_norm(expand(token, values)).strip("'\"")
+        return bool(GLOB.search(s)) or os.path.exists(_real(s, cwd))
+
+    for m in REDIRECT_TARGET.finditer(_shell_norm(expand(cmd, values))):
+        if test(m.group(1)) and (m.group(0).startswith(">>") or existing(m.group(1))):
+            return True
+    for seg in segs:
+        if not SHELL_WRITE.search(seg):
+            continue
+        toks = [t for t in TOKEN.findall(seg) if not t.startswith("-")][1:]
+        if COPY_VERB.match(seg) and toks:
+            dest = _destination(seg)
+            if not test(_shell_norm(expand(dest, values))):
+                continue
+            real = _real(_shell_norm(expand(dest, values)), cwd)
+            if GLOB.search(real) or os.path.isfile(real):
+                return True
+            if os.path.isdir(real):
+                for src in (t for t in toks if t != dest):
+                    name = os.path.basename(_shell_norm(expand(src, values)).strip("'\"").rstrip("/"))
+                    if GLOB.search(name) or os.path.exists(os.path.join(real, name)):
+                        return True
+            continue
+        if TEE.match(seg) and not re.search(r"\s-a\b|--append\b", seg):
+            if any(test(_shell_norm(expand(t, values))) and existing(t) for t in toks):
+                return True
+            continue
+        target = _destination(seg) if SED_INPLACE.match(seg) else seg
+        if test(_shell_norm(expand(target, values))):
+            return True
+    return False
+
+
 def _apply_patch(act: Action, text: str) -> None:
     for op, path in patch.operations(text):
         act.writes.append((op, norm(path, act.cwd)))
@@ -323,7 +374,7 @@ def judge(act: Action) -> list[Hit]:
                                           or REDIRECT_TARGET.search(low)):
             hit("harness")
         if dirs:
-            if _writes_to(cmd, segs, values, in_raw):
+            if _changes_existing(cmd, segs, values, in_raw, act.cwd):
                 hit("raw")
             if _writes_to(cmd, segs, values, in_policy):
                 hit("policy")
